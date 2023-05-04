@@ -2,8 +2,7 @@
 beat compiler for musical programs like rhythm games; 
 
 
-if you want to use this program, you need to follow beat_format
-check the example.json(about song_data format) and example2.json(about note_data format)
+if you want to use this program, check the example.json(about song_data format) and example2.json(about note_data format)
 
 how to use
 
