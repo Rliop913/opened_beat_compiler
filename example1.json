@@ -1,0 +1,2 @@
+{"artist":"NULL","bpm":"170.0","easy":"3","hard":"9","length":"240","normal":"6","title":"music_title","start_time": "0.01"}
+/*we need only "bpm" and "start_time" keys, the rest is ignored */
