@@ -22,7 +22,7 @@ how to use
 	3-1.graphical location is for rhythm game developer, it means the height at which the note is located graphically.
   
   
-	3-2. the graphical_length means the graphic length between note to note that fix to 1 if you want to ignore
+	3-2. the graphical_length means the graphic length between note to note. fix to 1 if you want to ignore
   
   
 	3-3.only one callback function will be called every reading one note
