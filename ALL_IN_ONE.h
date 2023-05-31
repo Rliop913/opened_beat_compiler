@@ -1,4 +1,8 @@
 #pragma once
+#ifndef ALLINONE
+#define ALLINONE
+
+
 #include "json/json.h"
 #include <string>
 #include <vector>
@@ -17,6 +21,17 @@ public:
 	typedef std::string note_data_path;
 	typedef std::string standard_tag_list;
 	typedef int graphical_length_between_beat;
+	typedef std::unordered_map<std::string, std::string> TAG;
+	struct init_group {
+		song_data_path s_json;
+		note_data_path d_json;
+		graphical_length_between_beat g_length;
+		std::function<void(double, double, std::unordered_map<std::string, std::string>, void*)> normal_callback_;//time, graphical location, tag list, user's pointer
+		std::function<void(double, double, double, double, std::unordered_map<std::string, std::string>, void*)> long_callback_;//start time, end time, start graphic, end graphic, tag list, user's pointer
+		std::function<void(double, double, std::unordered_map<std::string, std::string>, double, void*)> bpm_callback_;//time,graphical location, tag list, changed bpm,user's pointer
+		void* user_data;
+	};
+
 	//~ALL_IN_ONE();
 
 private:
@@ -26,7 +41,7 @@ private:
 	
 	
 
-private:
+protected:
 	Json::Value root;
 	Json::Reader parser;
 private:
@@ -49,16 +64,16 @@ private:
 		
 		std::function<void(double,double, std::unordered_map<std::string, std::string>,void* user_data)> normal_callback;//time,graphical location, tag list
 		std::function<void(double, double,double,double, std::unordered_map<std::string, std::string>, void* user_data)> long_callback;//start time, end time, start_location, end_location, tag list
-
+		std::function<void(double, double, std::unordered_map<std::string, std::string>, double, void*)> bpm_callback_;//time,graphical location, tag list, changed bpm,user's pointer
 	}data_storage;
-
+public:
 	struct standard_tag_table
 	{
-		int line_number;
-		int separate;
-		int y;
+		int line_number=0;
+		int separate=0;
+		int y=0;
 	};
-
+public:
 	struct ch_bpm_data_table
 	{
 		standard_tag_table std_table;
@@ -70,7 +85,7 @@ private:
 
 	
 	
-
+private:
 	std::vector<ch_bpm_data_table> bpm_change_storage;
 private:
 	double calc_time(standard_tag_table std_dat, double bpm);
@@ -79,41 +94,45 @@ private:
 private:
 	double calc_loc(standard_tag_table std_dat);
 	double calc_loc(double approx_loc);
+public:
 	double to_approx(standard_tag_table table);
 public:
-	void song_data_collector(std::ifstream* file_pointer, double *bpm__, double *start_time__);
-	ALL_IN_ONE(
-			song_data_path s_json,note_data_path d_json,
-			graphical_length_between_beat g_length,
-			std::function<void(double,double, std::unordered_map<std::string, std::string>,void*)> normal_callback_,
-			std::function<void(double, double, double, double, std::unordered_map<std::string, std::string>,void*)> long_callback_,void* user_data
-	);
-	ALL_IN_ONE();
+	ALL_IN_ONE(init_group init);
 };
 
 
-ALL_IN_ONE::ALL_IN_ONE(song_data_path s_json, note_data_path d_json, graphical_length_between_beat g_length, std::function<void(double, double, std::unordered_map<std::string, std::string>, void*)> normal_callback_, std::function<void(double, double, double, double, std::unordered_map<std::string, std::string>, void*)> long_callback_, void* user_data) {
-	song_data = s_json;
-	note_data = d_json;
-	data_storage.length = g_length;
-	if (normal_callback_) {
-		data_storage.normal_callback = normal_callback_;
+ALL_IN_ONE::ALL_IN_ONE(init_group init) {
+	song_data = init.s_json;
+	note_data = init.d_json;
+	data_storage.length = init.g_length;
+	if (init.normal_callback_) {
+		data_storage.normal_callback = init.normal_callback_;
 	}
 	else {
 		data_storage.normal_callback = NULL;
 	}
-	if (long_callback_) {
-		data_storage.long_callback = long_callback_;
+	if (init.long_callback_) {
+		data_storage.long_callback = init.long_callback_;
 	}
 	else {
 		data_storage.long_callback = NULL;
 	}
-	if (user_data != nullptr) {
-		data_storage.user = user_data;
+	if (init.bpm_callback_) {
+		data_storage.bpm_callback_ = init.bpm_callback_;
+	}
+	else {
+		data_storage.bpm_callback_ = NULL;
+	}
+	if (init.user_data != nullptr) {
+		data_storage.user = init.user_data;
 	}
 	if (song_data != "") {
 		std::ifstream jfile(song_data);
 		song_data_collector(&jfile);
+	}
+	else {
+		data_storage.bpm = 1.0;
+		data_storage.time = 0.0;
 	}
 	if (note_data != "") {
 		std::ifstream ch_bpm_pointer(note_data);
@@ -129,7 +148,46 @@ ALL_IN_ONE::note_reading_start(std::ifstream* file_pointer) {
 	while (std::getline(*file_pointer, temp)) {
 		if (parser.parse(temp, root)) {
 			if (root.isMember(data_storage.std_effect_tag)) {
-				continue;
+				
+				std::unordered_map<std::string, std::string> dict;
+				double ch_bpm_=0.0;
+				standard_tag_table temp_table;
+				for (auto it = root.begin(); it != root.end(); ++it) {
+					if (it.key().asString() == "line_number") {
+						temp_table.line_number = std::stoi((*it).asString());
+					}
+					else if (it.key().asString() == "separate") {
+						temp_table.separate = std::stoi((*it).asString());
+					}
+					else if (it.key().asString() == "y") {
+						temp_table.y = std::stoi((*it).asString());
+					}
+					else if (it.key().asString() == "ch_bpm") {
+						ch_bpm_ = std::stod((*it).asString());
+					}
+					else {
+						dict[it.key().asString()] = (*it).asString();
+					}
+				}
+				if (bpm_change_storage.size() == 0) {//no bpm changes
+					data_storage.bpm_callback_(calc_time(temp_table, data_storage.bpm), calc_loc(temp_table), dict, ch_bpm_, data_storage.user);
+				}
+				else {//bpm changed
+					double temp_approx = to_approx(temp_table);
+					if (temp_approx > bpm_change_storage[bpm_change_storage.size() - 1].approx_loc) {//no more higher approx
+						data_storage.bpm_callback_(calc_time_between(bpm_change_storage[bpm_change_storage.size() - 1], temp_table), calc_loc(temp_approx), dict, ch_bpm_ , data_storage.user);
+					}
+					else if (temp_approx < bpm_change_storage[0].approx_loc) {//lower than every bpm ch
+						data_storage.bpm_callback_(calc_time(temp_approx, data_storage.bpm), calc_loc(temp_approx), dict, ch_bpm_, data_storage.user);
+					}
+					else {
+						for (int i = 1; i < bpm_change_storage.size(); i++) {
+							if (temp_approx < bpm_change_storage[i].approx_loc) {
+								data_storage.bpm_callback_(calc_time_between(bpm_change_storage[i - 1], temp_table), calc_loc(temp_approx), dict, ch_bpm_, data_storage.user);
+							}
+						}
+					}
+				}
 			}
 			else if (root.isMember(data_storage.std_long_tag[0])) {//long table
 				std::unordered_map<std::string, std::string> dict;
@@ -192,7 +250,7 @@ ALL_IN_ONE::note_reading_start(std::ifstream* file_pointer) {
 							}
 						}
 					}
-					data_storage.long_callback(calc_time_between(bpm_change_storage[start_bpm_point], start_table), calc_time_between(bpm_change_storage[end_bpm_point], end_table), calc_loc(start_table), calc_loc(end_table), dict, data_storage.user);
+					data_storage.long_callback((start_bpm_point==0?calc_time(start_approx, data_storage.bpm):calc_time_between(bpm_change_storage[start_bpm_point], start_table)), (end_bpm_point == 0 ? calc_time(end_approx, data_storage.bpm) : calc_time_between(bpm_change_storage[end_bpm_point], end_table)), calc_loc(start_table), calc_loc(end_table), dict, data_storage.user);
 
 				}
 
@@ -230,6 +288,7 @@ ALL_IN_ONE::note_reading_start(std::ifstream* file_pointer) {
 						for (int i = 1; i < bpm_change_storage.size(); i++) {
 							if (temp_approx < bpm_change_storage[i].approx_loc) {
 								data_storage.normal_callback(calc_time_between(bpm_change_storage[i - 1], temp_table), calc_loc(temp_approx), dict, data_storage.user);
+								break;
 							}
 						}
 					}
@@ -309,16 +368,16 @@ ALL_IN_ONE::calc_time_between(ch_bpm_data_table front_dat, standard_tag_table ba
 void
 ALL_IN_ONE::sort_bpm_storage() {
 	for (int i = 0; i < bpm_change_storage.size(); i++) {
-		bpm_change_storage[i].approx_loc = to_approx(bpm_change_storage[i].std_table);
+		bpm_change_storage.at(i).approx_loc = to_approx(bpm_change_storage.at(i).std_table);
 	}
-	double key = 0;
+	ch_bpm_data_table key;
 	int j = 0;
 	for (int i = 1; i < bpm_change_storage.size(); i++) {
-		key = bpm_change_storage[i].approx_loc;
-		for (j = i - 1; j >= 0 && bpm_change_storage[j].approx_loc > key; j--) {
-			bpm_change_storage[j + 1].approx_loc = bpm_change_storage[j].approx_loc;
+		key = bpm_change_storage.at(i);
+		for (j = i - 1; j >= 0 && bpm_change_storage[j].approx_loc > key.approx_loc; j--) {
+			bpm_change_storage.at(j + 1) = bpm_change_storage.at(j);
 		}
-		bpm_change_storage[j + 1].approx_loc = key;
+		bpm_change_storage.at(j + 1) = key;
 	}
 }
 
@@ -327,6 +386,7 @@ ALL_IN_ONE::song_data_collector(std::ifstream* file_pointer) {
 	*file_pointer >> root;
 	data_storage.bpm = std::stod(root["bpm"].asString());
 	data_storage.time = std::stod(root["start_time"].asString());
+	init_ch_bpm(file_pointer);
 }
 
 double
@@ -340,13 +400,8 @@ ALL_IN_ONE::calc_loc(double approx_loc) {
 	return approx_loc * data_storage.length;
 }
 
-void
-ALL_IN_ONE::song_data_collector(std::ifstream* file_pointer, double* bpm__, double* start_time__) {
-	*file_pointer >> root;
-	*bpm__ = std::stod(root["bpm"].asString());
-	*start_time__ = std::stod(root["start_time"].asString());
-}
 
 ALL_IN_ONE::ALL_IN_ONE() {
 
 }
+#endif // !ALLINONE
